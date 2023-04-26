@@ -336,7 +336,8 @@ def has_hf_hub(necessary=False):
 
 def download_pretrained_from_hf(
         model_id: str,
-        filename: str = 'open_clip_pytorch_model.bin',
+        # filename: str = 'open_clip_pytorch_model.bin',
+        filename: str = 'pytorch_model.bin',
         revision=None,
         cache_dir: Union[str, None] = None,
 ):
