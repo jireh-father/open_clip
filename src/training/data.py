@@ -5,6 +5,7 @@ import math
 import os
 import random
 import sys
+import glob
 import braceexpand
 from dataclasses import dataclass
 from multiprocessing import Value
@@ -44,6 +45,24 @@ class CsvDataset(Dataset):
     def __getitem__(self, idx):
         images = self.transforms(Image.open(str(self.images[idx])))
         texts = self.tokenize([str(self.captions[idx])])[0]
+        return images, texts
+
+class HfDataset(Dataset):
+    def __init__(self, metadata_dir, transforms, tokenizer=None):
+        logging.debug(f'Loading metadata from {metadata_dir}.')
+
+        self.items = [json.loads(line) for line in open(os.path.join(metadata_dir, "metadata.jsonl")).readlines()]
+        self.image_root = metadata_dir
+        self.transforms = transforms
+
+        self.tokenize = tokenizer
+
+    def __len__(self):
+        return len(self.items)
+
+    def __getitem__(self, idx):
+        images = self.transforms(Image.open(os.path.join(self.image_root, self.items[idx]['file_name'])))
+        texts = self.tokenize([self.items[idx]['text']])[0]
         return images, texts
 
 
@@ -471,6 +490,30 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None):
 
     return DataInfo(dataloader, sampler)
 
+def get_hf_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None):
+    input_filename = args.train_data if is_train else args.val_data
+    assert input_filename
+    dataset = HfDataset(
+        input_filename, preprocess_fn, tokenizer
+    )
+    num_samples = len(dataset)
+    sampler = DistributedSampler(dataset) if args.distributed and is_train else None
+    shuffle = is_train and sampler is None
+
+    dataloader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=shuffle,
+        num_workers=args.workers,
+        pin_memory=True,
+        sampler=sampler,
+        drop_last=is_train,
+    )
+    dataloader.num_samples = num_samples
+    dataloader.num_batches = len(dataloader)
+
+    return DataInfo(dataloader, sampler)
+
 
 class SyntheticDataset(Dataset):
 
@@ -527,6 +570,8 @@ def get_dataset_fn(data_path, dataset_type):
         return get_wds_dataset
     elif dataset_type == "csv":
         return get_csv_dataset
+    elif dataset_type == "hf":
+        return get_hf_dataset
     elif dataset_type == "synthetic":
         return get_synthetic_dataset
     elif dataset_type == "auto":
