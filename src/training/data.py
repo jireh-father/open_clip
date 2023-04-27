@@ -66,6 +66,7 @@ class HfDataset(Dataset):
             images = self.transforms(Image.open(os.path.join(self.image_root, self.items[idx]['file_name'])))
             texts = self.tokenize([self.items[idx]['text']])[0]
         except Exception as e:
+            print("dataset error", e)
             return self.__getitem__(random.randint(0, len(self.items) - 1))
         return images, texts
 
